@@ -1,0 +1,95 @@
+#### SPAA - DRC ####
+
+## Example code for clujster-based SPPA
+## data available on figshare (see link in ms).
+
+## cluster stuff
+detectCores() # 48
+cl <- makeCluster(detectCores())
+clusterEvalQ(cl, {library(spatstat)})
+
+
+# white nephthidae
+
+wd_deep <- df[df[,"taxa"]==spp[1],] 
+
+wd_d <- as.ppp(cbind(wd_deep[,"x"], wd_deep[,"y"]), W=win.gww)
+
+intensity(wd_d) # get lambda (density) in good units
+wd_d$n # get abundance
+## hp
+
+wd_d_hp <- ppm(wd_d ~ dtc_wd, rmin = 0.3)
+
+## cluster stuff
+detectCores() # 48 !!!
+cl <- makeCluster(detectCores())
+clusterEvalQ(cl, {library(spatstat)})
+
+nsim <- round(9999/detectCores())
+
+call_envelope <- function(x, nsim){
+  E <- spatstat.explore::envelope(x, "pcf", savefuns = T, savepatterns = T, nsim = nsim)
+  return(E)
+}
+
+ppplist <- replicate(detectCores(), wd_d, simplify = F)
+envList <- parLapply(cl = cl, X = ppplist, fun = call_envelope, nsim = nsim)
+envfinal <- do.call(pool, c(envlist, savepatterns = T, savefuns = T))
+E <- envelope.envelope(envfinal, nrank = 500, nsim = 9999, savefuns = T)
+stopCluster(cl)
+#E <- envelope(wd_d_hp, fun = 'pcf', nsim = 9999, nrank = 499, savefuns = T) # old
+plot(E, ylim=c(0, 4), main = "HP: White nephtheidae",
+     legend = F)
+
+wd_hp <- dclf.test(E) 
+
+
+
+plot(E, ylim=c(0, 4), main = "HP: White nephthidae: r = 0 - 4.4 m, p = 0.01",
+     legend = F)
+abline(v = 2)
+abline(h = 1, lty = 2)
+
+wd_hp <- dclf.test(E) # GoF test
+
+
+## tc
+
+mod <- kppm(wd.pp ~ 1, "Thomas", statistic="pcf", method="mincon", rmin = 0.06, rmax = 0.15) # TC model - can change model type in future
+
+F_ <- envelope(mod, fun = 'pcf', nsim = 99, nrank = 5, savefuns = T) # model
+
+plot(F_, ylim = c(0, 4), xlim =c(0, 0.3),
+     main = "TC: White nephthidae: r = 3 - 10 cm, p = 0.22", legend = F) # saves pcf
+abline(v = 0.06)
+abline(v = 0.15)
+
+abline(h = 1, lty = 2)
+
+wd_tc3_6cm <- dclf.test(F_, rinterval = c(0.03, 0.06))  # GoF test
+wd_tc6_15cm <- dclf.test(F_, rinterval = c(0.06, 0.15))
+
+mod$mu # mean points in cluster
+mod$clustpar
+
+
+
+## itc
+
+mod.itc <- kppm(wd_d ~ demim + x * dtc_wd, "Thomas", statistic="pcf", method="mincon",
+                rmin = 0.05) # model, again, can change matern
+
+G <- envelope(mod.itc, fun = 'pcf', nsim = 99, nrank = 5, savefuns = T) # model
+
+plot(G, xlim = c(0, 1.5),
+     main = "ITC: White nephtidae: r = 15 cm - 1.5 m, p-value = 0.58",
+     legend = F) # saves pcf
+abline(v = 0.15)
+abline(h = 1, lty = 2)
+
+wd_itc <- dclf.test(G, rinterval = c(0.05, 1.5)) # GoF test
+
+
+mod.itc$clustpar
+intensity(wd_d) / mod.itc$clustpar[1] # mu
